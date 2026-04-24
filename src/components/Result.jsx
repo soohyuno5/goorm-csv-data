@@ -1,3 +1,7 @@
+import { useMemo, useState } from "react";
+import "chart.js/auto";
+import { Bar, Doughnut, Line, Pie } from "react-chartjs-2";
+
 function formatNumber(value) {
   return Number(value).toLocaleString();
 }
@@ -6,126 +10,296 @@ function renderTopValues(topValues) {
   return topValues.map(({ value, count }) => `${value} (${count})`).join(", ");
 }
 
-function HorizontalBarChart({ title, items, valueKey, colorClass, emptyMessage, formatter }) {
-  if (!items.length) {
-    return <p className="empty-copy">{emptyMessage}</p>;
-  }
-
-  const maxValue = Math.max(...items.map((item) => item[valueKey]), 1);
-
-  return (
-    <div className="chart-card">
-      <div className="chart-header">
-        <h3>{title}</h3>
-      </div>
-      <div className="bar-chart">
-        {items.map((item) => {
-          const width = `${(item[valueKey] / maxValue) * 100}%`;
-          return (
-            <div className="bar-row" key={item.column || item.label}>
-              <div className="bar-meta">
-                <span className="bar-label">{item.column || item.label}</span>
-                <strong>{formatter(item[valueKey])}</strong>
-              </div>
-              <div className="bar-track">
-                <div className={`bar-fill ${colorClass}`} style={{ width }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function CategoryChart({ items }) {
-  if (!items.length) {
-    return <p className="empty-copy">범주형 컬럼이 없어 분포 차트를 표시할 수 없습니다.</p>;
-  }
-
-  const category = items[0];
-  const maxValue = Math.max(...category.topValues.map((item) => item.count), 1);
-
-  return (
-    <div className="chart-card">
-      <div className="chart-header">
-        <h3>상위 범주 분포</h3>
-        <p>{category.column}</p>
-      </div>
-      <div className="bar-chart">
-        {category.topValues.map((item) => (
-          <div className="bar-row" key={`${category.column}-${item.value}`}>
-            <div className="bar-meta">
-              <span className="bar-label">{item.value}</span>
-              <strong>{formatNumber(item.count)}</strong>
-            </div>
-            <div className="bar-track">
-              <div
-                className="bar-fill bar-fill-coral"
-                style={{ width: `${(item.count / maxValue) * 100}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function MetricCards({ analysis }) {
   const numericCount = analysis.numericSummary.length;
   const categoricalCount = analysis.categoricalSummary.length;
-  const widestNumeric =
-    analysis.numericSummary
-      .slice()
-      .sort((a, b) => b.max - a.max)
-      .at(0) || null;
+  const dateColumns = analysis.dateSummary.map((item) => item.column);
 
   return (
     <div className="kpi-grid">
       <div className="kpi-card">
-        <span>총 행 수</span>
+        <span>행</span>
         <strong>{formatNumber(analysis.rowCount)}</strong>
       </div>
       <div className="kpi-card">
-        <span>총 열 수</span>
+        <span>열</span>
         <strong>{formatNumber(analysis.columnCount)}</strong>
       </div>
       <div className="kpi-card">
-        <span>수치형 컬럼</span>
+        <span>수치형</span>
         <strong>{formatNumber(numericCount)}</strong>
       </div>
       <div className="kpi-card">
-        <span>범주형 컬럼</span>
+        <span>범주형</span>
         <strong>{formatNumber(categoricalCount)}</strong>
       </div>
-      {widestNumeric && (
-        <div className="kpi-card kpi-card-wide">
-          <span>가장 큰 범위의 수치형 컬럼</span>
-          <strong>
-            {widestNumeric.column}: {formatNumber(widestNumeric.min)} ~{" "}
-            {formatNumber(widestNumeric.max)}
-          </strong>
-        </div>
+      <div className="kpi-card kpi-card-wide">
+        <span>날짜형 컬럼</span>
+        <strong>{dateColumns.length ? dateColumns.join(", ") : "없음"}</strong>
+      </div>
+    </div>
+  );
+}
+
+function InsightSection({ title, items, emptyText }) {
+  return (
+    <div className="insight-block">
+      <h3>{title}</h3>
+      {items?.length ? (
+        <ul className="insight-list">
+          {items.map((item, index) => (
+            <li key={`${title}-${index}`}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="empty-copy">{emptyText}</p>
       )}
     </div>
   );
 }
 
-export default function Result({ analysis, gptResult, loading, error }) {
-  const hasData = analysis.rowCount > 0;
-  const numericChartItems = analysis.numericSummary
-    .slice(0, 6)
-    .map((item) => ({ ...item, label: item.column }));
-  const numericRangeItems = analysis.numericSummary
-    .slice(0, 6)
-    .map((item) => ({ ...item, label: item.column, range: item.max - item.min }));
+function buildChartConfig(analysis, recommendedChart) {
+  const fallbackNumeric = analysis.numericSummary.slice(0, 6);
+  const fallbackCategory = analysis.categoricalSummary[0];
+  const fallbackDate = analysis.dateSummary[0];
+
+  const type = recommendedChart?.type || "bar";
+  const targetColumn = recommendedChart?.targetColumn;
+  const metric = recommendedChart?.metric || "avg";
+
+  if (type === "line" && fallbackDate) {
+    return {
+      component: Line,
+      title: `${fallbackDate.column} 추이`,
+      description: recommendedChart?.reason || "",
+      data: {
+        labels: fallbackDate.monthlyCounts.map((item) => item.label),
+        datasets: [
+          {
+            label: fallbackDate.column,
+            data: fallbackDate.monthlyCounts.map((item) => item.count),
+            borderColor: "#2f6fed",
+            backgroundColor: "rgba(47, 111, 237, 0.12)",
+            tension: 0.28,
+            fill: true,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+      },
+    };
+  }
+
+  if ((type === "doughnut" || type === "pie") && fallbackCategory) {
+    return {
+      component: type === "pie" ? Pie : Doughnut,
+      title: `${fallbackCategory.column} 분포`,
+      description: recommendedChart?.reason || "",
+      data: {
+        labels: fallbackCategory.topValues.map((item) => item.value),
+        datasets: [
+          {
+            label: fallbackCategory.column,
+            data: fallbackCategory.topValues.map((item) => item.count),
+            backgroundColor: ["#2f6fed", "#5b8def", "#8eb4ff", "#df8b4e", "#efb167", "#d5ddeb"],
+            borderWidth: 0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } },
+      },
+    };
+  }
+
+  const targetItems = targetColumn
+    ? fallbackNumeric.filter((item) => item.column === targetColumn)
+    : fallbackNumeric;
+  const items = targetItems.length ? targetItems : fallbackNumeric;
+  const values =
+    metric === "range" ? items.map((item) => item.max - item.min) : items.map((item) => item.avg);
+
+  return {
+    component: Bar,
+    title: metric === "range" ? "범위 비교" : "평균 비교",
+    description: recommendedChart?.reason || "",
+    data: {
+      labels: items.map((item) => item.column),
+      datasets: [
+        {
+          label: metric === "range" ? "범위" : "평균",
+          data: values,
+          backgroundColor: metric === "range" ? "#df8b4e" : "#2f6fed",
+          borderRadius: 10,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      indexAxis: metric === "range" ? "y" : "x",
+      scales: {
+        y: metric === "range" ? undefined : { beginAtZero: true },
+        x: metric === "range" ? { beginAtZero: true } : undefined,
+      },
+    },
+  };
+}
+
+function RecommendedChart({ analysis, recommendedChart }) {
+  const chartConfig = useMemo(
+    () => buildChartConfig(analysis, recommendedChart),
+    [analysis, recommendedChart],
+  );
+
+  if (!analysis.rowCount) {
+    return <p className="empty-copy">CSV를 업로드하면 차트가 표시됩니다.</p>;
+  }
+
+  const ChartComponent = chartConfig.component;
 
   return (
-    <section className="result-grid">
-      <article className="panel">
-        <p className="panel-label">2. 기본 분석 결과</p>
-        <h2>요약 정보</h2>
+    <div className="chart-card chart-canvas-card">
+      <div className="chart-header">
+        <h3>{chartConfig.title}</h3>
+        {chartConfig.description ? <p>{chartConfig.description}</p> : null}
+      </div>
+      <div className="chart-canvas-wrap">
+        <ChartComponent data={chartConfig.data} options={chartConfig.options} />
+      </div>
+    </div>
+  );
+}
+
+async function askQuestion({ question, analysis }) {
+  const response = await fetch("/api/ask", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ question, analysis }),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error || "질문 요청에 실패했습니다.");
+  }
+
+  return payload.answer;
+}
+
+function AskDataPanel({
+  analysis,
+  suggestedQuestions,
+  questionLoading,
+  setQuestionLoading,
+  questionError,
+  setQuestionError,
+  questionAnswer,
+  setQuestionAnswer,
+}) {
+  const [question, setQuestion] = useState("");
+
+  const submitQuestion = async (nextQuestion) => {
+    if (!nextQuestion.trim() || !analysis.rowCount) {
+      return;
+    }
+
+    setQuestionLoading(true);
+    setQuestionError("");
+    try {
+      const answer = await askQuestion({ question: nextQuestion, analysis });
+      setQuestionAnswer(answer);
+      setQuestion(nextQuestion);
+    } catch (error) {
+      setQuestionError(error.message);
+    } finally {
+      setQuestionLoading(false);
+    }
+  };
+
+  return (
+    <article className="panel">
+      <div className="section-heading">
+        <h2>질문하기</h2>
+      </div>
+      <div className="ask-panel">
+        <div className="ask-form">
+          <textarea
+            className="question-input"
+            rows={4}
+            placeholder="예: 어떤 컬럼의 변동폭이 가장 큰가요?"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+          />
+          <button
+            className="primary-button"
+            type="button"
+            disabled={questionLoading || !analysis.rowCount}
+            onClick={() => submitQuestion(question)}
+          >
+            {questionLoading ? "질문 중..." : "질문하기"}
+          </button>
+        </div>
+
+        <div className="ask-side">
+          <h3>추천 질문</h3>
+          <div className="question-chip-wrap">
+            {suggestedQuestions?.length ? (
+              suggestedQuestions.map((item, index) => (
+                <button
+                  key={`${item}-${index}`}
+                  className="question-chip"
+                  type="button"
+                  onClick={() => submitQuestion(item)}
+                >
+                  {item}
+                </button>
+              ))
+            ) : (
+              <p className="empty-copy">업로드 후 질문이 표시됩니다.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {questionError ? <p className="error-copy">{questionError}</p> : null}
+      {questionAnswer ? (
+        <div className="answer-card">
+          <h3>답변</h3>
+          <p>{questionAnswer}</p>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+export default function Result({
+  analysis,
+  insights,
+  loading,
+  error,
+  questionLoading,
+  setQuestionLoading,
+  questionError,
+  setQuestionError,
+  questionAnswer,
+  setQuestionAnswer,
+}) {
+  const hasData = analysis.rowCount > 0;
+
+  return (
+    <section className="dashboard-grid">
+      <article className="panel dashboard-summary">
+        <div className="section-heading">
+          <h2>요약</h2>
+        </div>
         {hasData ? (
           <>
             <MetricCards analysis={analysis} />
@@ -135,72 +309,65 @@ export default function Result({ analysis, gptResult, loading, error }) {
                 <strong>{analysis.fileName}</strong>
               </div>
               <div className="stat-card">
-                <span>컬럼 목록</span>
+                <span>컬럼</span>
                 <strong>{analysis.columns.join(", ")}</strong>
               </div>
             </div>
           </>
         ) : (
-          <p className="empty-copy">CSV를 업로드하면 기본 요약이 여기에 표시됩니다.</p>
+          <p className="empty-copy">CSV를 업로드하면 요약이 표시됩니다.</p>
         )}
       </article>
 
-      <article className="panel">
-        <p className="panel-label">3. GPT 분석</p>
-        <h2>인사이트 요약</h2>
-        {loading && <p className="status-copy">GPT가 데이터를 분석 중입니다...</p>}
-        {!loading && error && <p className="error-copy">{error}</p>}
-        {!loading && !error && gptResult && (
-          <div className="gpt-output">
-            {gptResult.split("\n").map((line, index) => (
-              <p key={`${line}-${index}`}>{line}</p>
-            ))}
-          </div>
-        )}
-        {!loading && !error && !gptResult && (
-          <p className="empty-copy">업로드 후 GPT 결과가 여기에 표시됩니다.</p>
-        )}
-      </article>
-
-      <article className="panel wide-panel">
-        <p className="panel-label">4. 시각화 대시보드</p>
-        <h2>차트와 패턴 요약</h2>
-        {!hasData && (
-          <p className="empty-copy">CSV 업로드 후 차트와 데이터 패턴이 여기에 표시됩니다.</p>
-        )}
-        {hasData && (
-          <div className="chart-grid">
-            <HorizontalBarChart
-              title="수치형 평균 비교"
-              items={numericChartItems}
-              valueKey="avg"
-              colorClass="bar-fill-blue"
-              emptyMessage="수치형 컬럼이 없어 평균 차트를 표시할 수 없습니다."
-              formatter={(value) => formatNumber(value)}
+      <article className="panel dashboard-insights">
+        <div className="section-heading">
+          <h2>인사이트</h2>
+        </div>
+        {loading ? <p className="status-copy">분석 중입니다...</p> : null}
+        {!loading && error ? <p className="error-copy">{error}</p> : null}
+        {!loading && !error && hasData ? (
+          <div className="insight-layout">
+            <div className="overview-card">
+              <p>{insights.overview || "요약이 없습니다."}</p>
+            </div>
+            <InsightSection
+              title="핵심"
+              items={insights.highlights}
+              emptyText="표시할 내용이 없습니다."
             />
-            <HorizontalBarChart
-              title="수치형 범위 비교"
-              items={numericRangeItems.map((item) => ({ ...item, label: item.column }))}
-              valueKey="range"
-              colorClass="bar-fill-gold"
-              emptyMessage="수치형 컬럼이 없어 범위 차트를 표시할 수 없습니다."
-              formatter={(value) => formatNumber(value)}
+            <InsightSection
+              title="주의"
+              items={insights.cautions}
+              emptyText="표시할 내용이 없습니다."
             />
-            <CategoryChart items={analysis.categoricalSummary} />
           </div>
-        )}
+        ) : null}
+        {!loading && !error && !hasData ? (
+          <p className="empty-copy">CSV를 업로드하면 인사이트가 표시됩니다.</p>
+        ) : null}
       </article>
 
-      <article className="panel wide-panel">
-        <p className="panel-label">5. 미리보기와 통계</p>
-        <h2>샘플 데이터와 컬럼 통계</h2>
-        {!hasData && (
-          <p className="empty-copy">CSV 업로드 후 샘플 데이터와 컬럼 통계가 표시됩니다.</p>
-        )}
+      <article className="panel dashboard-chart">
+        <div className="section-heading">
+          <h2>차트</h2>
+        </div>
+        <div className="chart-grid single-chart">
+          <RecommendedChart
+            analysis={analysis}
+            recommendedChart={insights.recommendedChart}
+          />
+        </div>
+      </article>
 
-        {hasData && (
-          <>
-            <div className="table-wrap">
+      <article className="panel dashboard-data">
+        <div className="section-heading">
+          <h2>데이터</h2>
+        </div>
+        {!hasData ? (
+          <p className="empty-copy">CSV를 업로드하면 데이터가 표시됩니다.</p>
+        ) : (
+          <div className="data-layout">
+            <div className="table-wrap data-table-panel">
               <table>
                 <thead>
                   <tr>
@@ -221,9 +388,9 @@ export default function Result({ analysis, gptResult, loading, error }) {
               </table>
             </div>
 
-            <div className="summary-columns">
+            <div className="data-summary-stack">
               <div>
-                <h3>수치형 평균/범위</h3>
+                <h3>수치형</h3>
                 {analysis.numericSummary.length ? (
                   <ul className="summary-list">
                     {analysis.numericSummary.map((item) => (
@@ -239,7 +406,7 @@ export default function Result({ analysis, gptResult, loading, error }) {
               </div>
 
               <div>
-                <h3>범주형 패턴</h3>
+                <h3>범주형</h3>
                 {analysis.categoricalSummary.length ? (
                   <ul className="summary-list">
                     {analysis.categoricalSummary.map((item) => (
@@ -254,9 +421,22 @@ export default function Result({ analysis, gptResult, loading, error }) {
                 )}
               </div>
             </div>
-          </>
+          </div>
         )}
       </article>
+
+      <div className="dashboard-ask">
+        <AskDataPanel
+          analysis={analysis}
+          suggestedQuestions={insights.suggestedQuestions}
+          questionLoading={questionLoading}
+          setQuestionLoading={setQuestionLoading}
+          questionError={questionError}
+          setQuestionError={setQuestionError}
+          questionAnswer={questionAnswer}
+          setQuestionAnswer={setQuestionAnswer}
+        />
+      </div>
     </section>
   );
 }

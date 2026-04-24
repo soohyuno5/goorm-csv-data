@@ -45,13 +45,40 @@ function summarizeCategoricalColumn(rows, column) {
 
   const topValues = [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
+    .slice(0, 6)
     .map(([value, count]) => ({ value, count }));
 
   return {
     column,
     uniqueCount: counts.size,
     topValues,
+  };
+}
+
+function summarizeDateColumn(rows, column) {
+  const parsed = rows
+    .map((row) => {
+      const raw = row[column];
+      const date = new Date(raw);
+      return Number.isNaN(date.getTime()) ? null : date;
+    })
+    .filter(Boolean);
+
+  if (!parsed.length || parsed.length / rows.length < 0.7) {
+    return null;
+  }
+
+  const monthlyMap = new Map();
+  parsed.forEach((date) => {
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    monthlyMap.set(key, (monthlyMap.get(key) || 0) + 1);
+  });
+
+  return {
+    column,
+    monthlyCounts: [...monthlyMap.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([label, count]) => ({ label, count })),
   };
 }
 
@@ -70,6 +97,13 @@ function buildAnalysis(fileName, rows) {
     }),
   );
   const categoricalColumns = columns.filter((column) => !numericColumns.includes(column));
+  const dateSummary = categoricalColumns
+    .map((column) => summarizeDateColumn(cleanRows, column))
+    .filter(Boolean);
+  const dateColumns = dateSummary.map((item) => item.column);
+  const textCategoricalColumns = categoricalColumns.filter(
+    (column) => !dateColumns.includes(column),
+  );
 
   return {
     fileName,
@@ -77,16 +111,18 @@ function buildAnalysis(fileName, rows) {
     columnCount: columns.length,
     columns,
     previewRows: cleanRows.slice(0, 5),
+    sampleRows: cleanRows.slice(0, 40),
     numericSummary: numericColumns
       .map((column) => summarizeNumericColumn(cleanRows, column))
       .filter(Boolean),
-    categoricalSummary: categoricalColumns.map((column) =>
+    categoricalSummary: textCategoricalColumns.map((column) =>
       summarizeCategoricalColumn(cleanRows, column),
     ),
+    dateSummary,
   };
 }
 
-async function fetchGptInsights(analysis) {
+async function fetchGptAnalysis(analysis) {
   const response = await fetch("/api/gpt", {
     method: "POST",
     headers: {
@@ -100,14 +136,16 @@ async function fetchGptInsights(analysis) {
     throw new Error(payload.error || "GPT 분석 요청에 실패했습니다.");
   }
 
-  return payload.result;
+  return payload;
 }
 
 export default function Upload({
   setAnalysis,
-  setGptResult,
+  setInsights,
   setLoading,
   setError,
+  setQuestionAnswer,
+  setQuestionError,
 }) {
   const handleFileChange = async (event) => {
     const file = event.target.files?.[0];
@@ -116,7 +154,8 @@ export default function Upload({
     }
 
     setError("");
-    setGptResult("");
+    setQuestionAnswer("");
+    setQuestionError("");
     setLoading(true);
 
     Papa.parse(file, {
@@ -126,8 +165,8 @@ export default function Upload({
         try {
           const analysis = buildAnalysis(file.name, data);
           setAnalysis(analysis);
-          const result = await fetchGptInsights(analysis);
-          setGptResult(result);
+          const result = await fetchGptAnalysis(analysis);
+          setInsights(result.insights);
         } catch (parseError) {
           setError(parseError.message || "CSV 처리 중 오류가 발생했습니다.");
         } finally {
@@ -147,15 +186,15 @@ export default function Upload({
         <p className="panel-label">1. 데이터 업로드</p>
         <h2>CSV 파일 선택</h2>
         <p className="panel-copy">
-          Papaparse로 CSV를 읽은 뒤, 총 개수와 패턴, 평균값을 계산해서 GPT 분석에
-          전달합니다.
+          업로드와 동시에 요약 통계, 샘플 행, 날짜 패턴을 계산하고 GPT가 읽기 좋은
+          분석 카드와 차트 추천을 생성합니다.
         </p>
       </div>
 
       <label className="upload-box" htmlFor="csv-upload">
         <span className="upload-title">CSV 업로드</span>
         <span className="upload-subtitle">
-          작은 CSV 파일을 선택하면 자동으로 분석을 시작합니다.
+          파일을 선택하면 분석, 추천 차트, 질문 준비까지 자동으로 진행됩니다.
         </span>
         <input
           id="csv-upload"
