@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+.matplotlib_cache_test/
+test_outputs/
+test_outputs_2/
+*.log
