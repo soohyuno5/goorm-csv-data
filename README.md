@@ -1,36 +1,51 @@
 # Goorm CSV Data
 
-CSV 파일을 업로드하면 기본 통계, 패턴 요약, 간단한 시각화, GPT 기반 인사이트 요약을 제공하는 프로젝트입니다.
+CSV 파일을 업로드하면 데이터 개요, GPT 인사이트, 추천 차트, 질문하기 기능을 한 화면에서 확인할 수 있는 웹앱입니다.
 
-이 저장소에는 두 가지 결과물이 들어 있습니다.
+이 저장소에는 두 가지 결과물이 포함되어 있습니다.
 
-- React + GPT 웹앱
-- CSV EDA용 Python 노트북
+- React + GPT 기반 CSV 분석 웹앱
+- Python 기반 CSV EDA 노트북 템플릿
 
-## Features
+## 주요 기능
 
-- CSV 파일 업로드
-- `papaparse` 기반 CSV 파싱
+- CSV 업로드 및 파싱
 - 행 수, 열 수, 컬럼 목록, 샘플 데이터 미리보기
-- 수치형 컬럼 평균/최소/최대 계산
-- 범주형 컬럼 상위 빈도 집계
-- GPT 인사이트 요약
-- 간단한 대시보드형 차트 UI
-- Jupyter Notebook 기반 EDA 및 시각화 템플릿
+- 수치형 / 범주형 / 날짜형 컬럼 자동 요약
+- GPT 구조화 분석
+- GPT 추천 차트 렌더링
+- 데이터 질문하기
+- 로컬 스토리지 저장 및 복원
+- 로컬 스토리지 비우기
 
-## Tech Stack
+## 현재 웹앱 구성
+
+- 상단 상태 바
+- 현재 분석 중인 데이터명 표시
+- 로컬 저장 용량 표시
+- 데이터 초기화 버튼
+- KPI 요약 카드
+- GPT 인사이트 카드
+- Chart.js 기반 추천 차트
+- 샘플 데이터 표
+- 표 아래 수치형 / 범주형 요약
+- 후속 질문 입력창 및 추천 질문
+
+## 기술 스택
 
 - React
 - Vite
 - Express
 - OpenAI Responses API
+- Chart.js
+- react-chartjs-2
 - Papa Parse
 - Python
 - pandas
 - matplotlib
 - seaborn
 
-## Project Structure
+## 프로젝트 구조
 
 ```text
 .
@@ -46,27 +61,28 @@ CSV 파일을 업로드하면 기본 통계, 패턴 요약, 간단한 시각화,
 ├─ data_eda_template.ipynb
 ├─ package.json
 ├─ vite.config.js
-└─ .env.example
+├─ .env.example
+└─ .gitignore
 ```
 
-## Web App Setup
+## 실행 방법
 
-### 1. Install dependencies
+### 1. 패키지 설치
 
 ```bash
 npm install
 ```
 
-### 2. Create `.env`
+### 2. `.env` 파일 생성
 
-`.env.example`를 참고해서 루트 폴더에 `.env` 파일을 만듭니다.
+루트 경로에 `.env` 파일을 만들고 OpenAI API 키를 설정합니다.
 
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4.1-mini
 ```
 
-### 3. Run development server
+### 3. 개발 서버 실행
 
 ```bash
 npm run dev
@@ -77,51 +93,58 @@ npm run dev
 - Frontend: `http://localhost:5173`
 - API: `http://localhost:3001`
 
-## How It Works
+## 동작 흐름
 
 1. 사용자가 CSV 파일을 업로드합니다.
 2. 프런트엔드에서 CSV를 파싱합니다.
-3. 기본 통계와 패턴 요약을 계산합니다.
+3. 기본 요약 통계와 샘플 데이터를 계산합니다.
 4. 계산된 요약 정보를 `/api/gpt`로 전송합니다.
-5. 서버가 OpenAI API를 호출해 인사이트를 생성합니다.
-6. 화면에 요약 카드, 표, 차트, GPT 분석 결과를 표시합니다.
+5. 서버가 OpenAI API를 호출해 구조화된 인사이트를 반환합니다.
+6. 화면에 KPI, 인사이트, 추천 차트, 데이터 표가 렌더됩니다.
+7. 사용자는 `/api/ask`를 통해 추가 질문을 보낼 수 있습니다.
 
-## Notebook Usage
+## 질문하기 기능
+
+데이터 업로드 후 아래와 같은 후속 질문이 가능합니다.
+
+- 어떤 컬럼의 변동폭이 가장 큰가요?
+- 어떤 범주가 가장 많이 등장하나요?
+- 날짜 흐름에 따라 추세가 보이나요?
+- 어떤 추가 분석을 해보면 좋을까요?
+
+## 로컬 스토리지
+
+현재 앱은 아래 상태를 로컬 스토리지에 저장합니다.
+
+- 업로드한 분석 결과
+- GPT 인사이트 결과
+- 마지막 질문 답변
+
+상단의 `로컬 스토리지 비우기` 버튼을 누르면 저장된 데이터와 현재 화면 상태가 함께 초기화됩니다.
+
+## 노트북 템플릿
 
 `data_eda_template.ipynb`는 CSV 파일을 선택해서 바로 EDA를 수행할 수 있는 노트북입니다.
 
 포함 내용:
 
-- 데이터 개요 출력
+- 데이터 개요
 - 결측치 확인
 - 수치형 요약 통계
 - 범주형 요약 통계
 - 상관관계 확인
 - 히스토그램 / 박스플롯 / 범주형 빈도 차트 / 날짜 추이 차트
 
-## Recommended Test File
-
-예시 테스트 파일:
-
-- `100 Sales Records.csv`
-
-이 파일로 다음 항목을 빠르게 확인할 수 있습니다.
-
-- 수치형 평균 비교
-- 범주형 상위 패턴
-- 날짜 컬럼 존재 여부
-- GPT 인사이트 요약 동작
-
-## Build
+## 빌드
 
 ```bash
 npm run build
 ```
 
-## Notes
+## 참고
 
-- `.env` 파일은 민감 정보가 포함되므로 Git에 포함되지 않도록 `.gitignore`에 제외되어 있습니다.
-- 개발 환경에 따라 프런트와 API 서버를 각각 따로 실행해야 할 수 있습니다.
+- `.env` 파일은 민감 정보가 포함되므로 Git에 포함되지 않습니다.
+- 이 프로젝트는 PC / 태블릿 화면을 중심으로 레이아웃이 조정되어 있습니다.
 
 ## License
 
