@@ -5,3 +5,5 @@ dist/
 test_outputs/
 test_outputs_2/
 *.log
+
+.vercel
